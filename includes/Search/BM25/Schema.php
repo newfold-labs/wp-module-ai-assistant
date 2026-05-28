@@ -139,6 +139,7 @@ class Schema {
 		$terms_table = self::terms_table();
 		$docs_table  = self::docs_table();
 		$stats       = self::get_stats();
+		$progress    = Indexer::get_rebuild_progress();
 
 		$term_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$terms_table}" );
 		$terms     = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT term) FROM {$terms_table}" );
@@ -150,6 +151,8 @@ class Schema {
 			'term_rows'     => $term_rows,
 			'unique_terms'  => $terms,
 			'last_indexed'  => is_string( $indexed ) ? $indexed : '',
+			'rebuild'       => $progress,
+			'limited_mode'  => 'running' === $progress['status'],
 			'tables'        => array(
 				'terms' => $terms_table,
 				'docs'  => $docs_table,

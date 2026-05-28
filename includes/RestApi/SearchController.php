@@ -157,17 +157,17 @@ class SearchController {
 	}
 
 	/**
-	 * POST rebuild search index.
+	 * POST queue search index rebuild.
 	 *
 	 * @return \WP_REST_Response
 	 */
 	public function rebuild() {
-		( new Indexer() )->rebuild();
+		( new Indexer() )->start_rebuild();
 
 		return rest_ensure_response(
 			array(
-				'rebuilt' => true,
-				'stats'   => Schema::get_index_status(),
+				'queued' => true,
+				'stats'  => Schema::get_index_status(),
 			)
 		);
 	}
