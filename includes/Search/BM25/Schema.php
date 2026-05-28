@@ -125,4 +125,35 @@ class Schema {
 
 		return $stats;
 	}
+
+	/**
+	 * Return a fuller snapshot for admin diagnostics.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function get_index_status() {
+		global $wpdb;
+
+		self::maybe_create_tables();
+
+		$terms_table = self::terms_table();
+		$docs_table  = self::docs_table();
+		$stats       = self::get_stats();
+
+		$term_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$terms_table}" );
+		$terms     = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT term) FROM {$terms_table}" );
+		$indexed   = get_option( 'nfd_ai_assistant_search_indexed_at', '' );
+
+		return array(
+			'total_docs'    => $stats['total_docs'],
+			'avgdl'         => $stats['avgdl'],
+			'term_rows'     => $term_rows,
+			'unique_terms'  => $terms,
+			'last_indexed'  => is_string( $indexed ) ? $indexed : '',
+			'tables'        => array(
+				'terms' => $terms_table,
+				'docs'  => $docs_table,
+			),
+		);
+	}
 }

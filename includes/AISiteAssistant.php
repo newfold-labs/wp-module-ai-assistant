@@ -9,6 +9,7 @@ namespace NewfoldLabs\WP\Module\AIAssistant;
 
 use NewfoldLabs\WP\Module\AIAssistant\RestApi\AssistantController;
 use NewfoldLabs\WP\Module\AIAssistant\RestApi\KnowledgeController;
+use NewfoldLabs\WP\Module\AIAssistant\RestApi\SearchController;
 use NewfoldLabs\WP\Module\AIAssistant\Search\BM25\Indexer;
 use NewfoldLabs\WP\Module\AIAssistant\Services\BrandColorResolver;
 use NewfoldLabs\WP\Module\AIAssistant\Services\CapabilityGate;
@@ -99,6 +100,7 @@ class AISiteAssistant {
 	public function register_routes() {
 		( new AssistantController() )->register_routes();
 		( new KnowledgeController() )->register_routes();
+		( new SearchController() )->register_routes();
 	}
 
 	/**
