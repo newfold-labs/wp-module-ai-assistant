@@ -82,135 +82,48 @@ class Tokenizer {
 	/**
 	 * Small English stopword list.
 	 *
+	 * Loaded from data/stopwords.json with optional voku/stop-words package
+	 * integration for a more comprehensive list. Fully filterable.
+	 *
 	 * @return array<int, string>
 	 */
 	private function stopwords() {
-		$words = array(
-			'a',
-			'about',
-			'above',
-			'after',
-			'again',
-			'against',
-			'all',
-			'am',
-			'an',
-			'and',
-			'any',
-			'are',
-			'as',
-			'at',
-			'be',
-			'because',
-			'been',
-			'before',
-			'being',
-			'below',
-			'between',
-			'both',
-			'but',
-			'by',
-			'can',
-			'could',
-			'did',
-			'do',
-			'does',
-			'doing',
-			'down',
-			'during',
-			'each',
-			'few',
-			'for',
-			'from',
-			'further',
-			'had',
-			'has',
-			'have',
-			'having',
-			'he',
-			'her',
-			'here',
-			'hers',
-			'herself',
-			'him',
-			'himself',
-			'his',
-			'how',
-			'i',
-			'if',
-			'in',
-			'into',
-			'is',
-			'it',
-			'its',
-			'itself',
-			'me',
-			'more',
-			'most',
-			'my',
-			'myself',
-			'no',
-			'nor',
-			'not',
-			'of',
-			'off',
-			'on',
-			'once',
-			'only',
-			'or',
-			'other',
-			'our',
-			'ours',
-			'ourselves',
-			'out',
-			'over',
-			'own',
-			'same',
-			'she',
-			'should',
-			'so',
-			'some',
-			'such',
-			'than',
-			'that',
-			'the',
-			'their',
-			'theirs',
-			'them',
-			'themselves',
-			'then',
-			'there',
-			'these',
-			'they',
-			'this',
-			'those',
-			'through',
-			'to',
-			'too',
-			'under',
-			'until',
-			'up',
-			'very',
-			'was',
-			'we',
-			'were',
-			'what',
-			'when',
-			'where',
-			'which',
-			'while',
-			'who',
-			'whom',
-			'why',
-			'with',
-			'would',
-			'you',
-			'your',
-			'yours',
-			'yourself',
-			'yourselves',
-		);
+		$words = array();
+
+		// Prefer voku/stop-words if available (more comprehensive).
+		if ( class_exists( '\voku\helper\StopWords' ) ) {
+			try {
+				$words = ( new \voku\helper\StopWords() )->getStopWordsFromLanguage( 'en' );
+			} catch ( \Exception $e ) {
+				$words = array();
+			}
+		}
+
+		// Fallback to bundled JSON data.
+		if ( empty( $words ) ) {
+			$words = self::load_data( 'stopwords.json' );
+		}
 
 		return apply_filters( 'newfold_aia_search_stopwords', $words );
+	}
+
+	/**
+	 * Load a JSON data file from the data/ directory.
+	 *
+	 * @param string $filename File name (e.g. 'stopwords.json').
+	 * @return array<int|string, mixed>
+	 */
+	private static function load_data( $filename ) {
+		static $cache = array();
+		if ( ! isset( $cache[ $filename ] ) ) {
+			$path = dirname( __DIR__, 3 ) . '/data/' . $filename;
+			if ( file_exists( $path ) ) {
+				$data = json_decode( file_get_contents( $path ), true );
+				$cache[ $filename ] = is_array( $data ) ? $data : array();
+			} else {
+				$cache[ $filename ] = array();
+			}
+		}
+		return $cache[ $filename ];
 	}
 }

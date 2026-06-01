@@ -19,43 +19,52 @@ use NewfoldLabs\WP\Module\AIAssistant\Services\KnowledgeStore;
 class SynonymSuggestor {
 
 	/**
-	 * Words that should never be suggested as synonyms — function words,
-	 * generic verbs, and highly ambiguous terms that produce noise.
+	 * Noise/function words that should never be suggested as synonyms.
+	 *
+	 * @deprecated 2.x Use get_noise_words() instead.
 	 */
-	const NOISE_WORDS = array(
-		'within', 'without', 'instead', 'about', 'around', 'between',
-		'through', 'during', 'before', 'after', 'above', 'below',
-		'under', 'over', 'here', 'there', 'where', 'what', 'when',
-		'which', 'who', 'whom', 'whose', 'this', 'that', 'these',
-		'those', 'some', 'any', 'every', 'each', 'both', 'all',
-		'much', 'many', 'more', 'most', 'few', 'several', 'such',
-		'own', 'same', 'other', 'another', 'else', 'also', 'very',
-		'just', 'only', 'even', 'still', 'already', 'yet', 'once',
-		'hereby', 'herein', 'thereof', 'thereto', 'thence',
-		'whereby', 'wherein', 'whereas', 'whereupon', 'whosoever',
-		'getting', 'get', 'got', 'having', 'doing', 'being',
-		'making', 'taking', 'going', 'coming', 'using',
-		'based', 'used', 'given', 'following', 'regarding',
-		'including', 'excluding', 'concerning', 'according',
-		'depending', 'related', 'known', 'various',
-		'certain', 'specific', 'particular', 'multiple', 'single',
-		'available', 'possible', 'current', 'general', 'common',
-		'typical', 'standard', 'regular', 'normal', 'simple',
-		'basic', 'major', 'main', 'primary', 'key', 'total',
-		'full', 'whole', 'entire', 'complete', 'partial',
-		'respective', 'individual', 'separate', 'additional',
-		'further', 'furthermore', 'moreover', 'nevertheless',
-		'nonetheless', 'notwithstanding', 'hence', 'thus',
-		'therefore', 'consequently', 'accordingly', 'besides',
-		'likewise', 'similarly', 'conversely', 'rather',
-	);
+	const NOISE_WORDS = array();
+
+	/**
+	 * Get noise/function words that should never be suggested as synonyms.
+	 *
+	 * Loaded from data/noise-words.json, fully filterable.
+	 *
+	 * @return array<int, string>
+	 */
+	protected function get_noise_words() {
+		return apply_filters(
+			'newfold_aia_search_noise_words',
+			self::load_data( 'noise-words.json' )
+		);
+	}
+
+	/**
+	 * Load a JSON data file from the data/ directory.
+	 *
+	 * @param string $filename File name (e.g. 'noise-words.json').
+	 * @return array<int|string, mixed>
+	 */
+	private static function load_data( $filename ) {
+		static $cache = array();
+		if ( ! isset( $cache[ $filename ] ) ) {
+			$path = dirname( __DIR__, 2 ) . '/data/' . $filename;
+			if ( file_exists( $path ) ) {
+				$data = json_decode( file_get_contents( $path ), true );
+				$cache[ $filename ] = is_array( $data ) ? $data : array();
+			} else {
+				$cache[ $filename ] = array();
+			}
+		}
+		return $cache[ $filename ];
+	}
 
 	/**
 	 * Tokenizer.
 	 *
 	 * @var Tokenizer
 	 */
-	private $tokenizer;
+	protected $tokenizer;
 
 	/**
 	 * Constructor.
@@ -119,7 +128,7 @@ class SynonymSuggestor {
 			$tokens = $this->tokenizer->tokenize_query( $text );
 			$unique = array_values(
 				array_unique(
-					array_diff( $tokens, self::NOISE_WORDS )
+					array_diff( $tokens, $this->get_noise_words() )
 				)
 			);
 			$doc_terms[ $index ] = $unique;

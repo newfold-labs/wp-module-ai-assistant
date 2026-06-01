@@ -50,19 +50,17 @@ class Synonyms {
 	/**
 	 * Get built-in synonyms.
 	 *
+	 * No longer ships with hardcoded defaults; returns an empty array.
+	 * The filter 'newfold_aia_search_default_synonyms' is retained for
+	 * backward compatibility with code that may add defaults via hooks.
+	 *
 	 * @return array<string, array<int, string>>
 	 */
 	public static function get_default_map() {
 		return self::sanitize_map(
 			apply_filters(
 				'newfold_aia_search_default_synonyms',
-				array(
-					'timings' => array( 'hours', 'opening' ),
-					'timing'  => array( 'hours', 'opening' ),
-					'hours'   => array( 'timings', 'opening' ),
-					'wifi'    => array( 'internet', 'wireless' ),
-					'gf'      => array( 'gluten', 'free' ),
-				)
+				array()
 			)
 		);
 	}
