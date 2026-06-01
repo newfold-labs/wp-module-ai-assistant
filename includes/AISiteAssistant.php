@@ -11,6 +11,8 @@ use NewfoldLabs\WP\Module\AIAssistant\RestApi\AssistantController;
 use NewfoldLabs\WP\Module\AIAssistant\RestApi\KnowledgeController;
 use NewfoldLabs\WP\Module\AIAssistant\RestApi\SearchController;
 use NewfoldLabs\WP\Module\AIAssistant\Search\BM25\Indexer;
+use NewfoldLabs\WP\Module\AIAssistant\Search\Synonyms;
+use NewfoldLabs\WP\Module\AIAssistant\Search\SynonymSuggestor;
 use NewfoldLabs\WP\Module\AIAssistant\Services\BrandColorResolver;
 use NewfoldLabs\WP\Module\AIAssistant\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIAssistant\Services\KnowledgeStore;
@@ -68,6 +70,8 @@ class AISiteAssistant {
 
 		KnowledgeStore::register_hooks();
 		Indexer::register_hooks();
+
+		add_action( 'nfd_ai_assistant_search_rebuild_complete', array( __CLASS__, 'generate_content_synonyms' ) );
 
 		if ( empty( KnowledgeStore::get_snapshot() ) ) {
 			add_action(
@@ -172,6 +176,31 @@ class AISiteAssistant {
 			false,
 			NFD_MODULE_AI_ASSISTANT_DIR . '/languages'
 		);
+	}
+
+	/**
+	 * Generate and apply LLM-based synonym suggestions after a search index rebuild.
+	 *
+	 * @return void
+	 */
+	public static function generate_content_synonyms() {
+		$suggestor   = new SynonymSuggestor();
+		$suggestions = $suggestor->from_llm();
+
+		if ( empty( $suggestions ) ) {
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				error_log( '[AI-Assistant AISiteAssistant] generate_content_synonyms: no suggestions returned, skipping' );
+			}
+			return;
+		}
+
+		Synonyms::update_custom_map( $suggestions );
+
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( '[AI-Assistant AISiteAssistant] generate_content_synonyms: replaced map with ' . count( $suggestions ) . ' LLM-generated groups' );
+		}
 	}
 
 	/**

@@ -17,12 +17,17 @@ class Retriever implements RetrieverInterface {
 	/**
 	 * Return top-K relevant corpus excerpts.
 	 *
+	 * Also ensures the site front page is always included — long homepages get
+	 * unfairly penalised by BM25 length normalisation and the fallback doesn't
+	 * run when BM25 returns any results.
+	 *
 	 * @param string $question Visitor question.
 	 * @param int    $k        Max results.
 	 * @return array<int, array<string, string>>
 	 */
 	public function top_k( $question, $k = 3 ) {
 		$search_results = ( new SearchService() )->search( $question, $k, KnowledgeStore::indexable_post_types() );
+
 		if ( ! empty( $search_results ) ) {
 			return $this->format_results( $search_results );
 		}

@@ -123,7 +123,7 @@ class AssistantController {
 		$conversation = $store->sync_brief_version( $conversation );
 
 		$retriever = new Retriever();
-		$retrieved = $retriever->top_k( $question, 5 );
+		$retrieved = $retriever->top_k( $question, 20 );
 
 		$prompt = ( new PromptAssembler() )->build( $question, $retrieved, $conversation );
 		$worker = new AiAssistantWorker();

@@ -10,6 +10,8 @@ namespace NewfoldLabs\WP\Module\AIAssistant\RestApi;
 use NewfoldLabs\WP\Module\AIAssistant\Search\BM25\Indexer;
 use NewfoldLabs\WP\Module\AIAssistant\Search\BM25\Schema;
 use NewfoldLabs\WP\Module\AIAssistant\Search\SearchService;
+use NewfoldLabs\WP\Module\AIAssistant\Search\Synonyms;
+use NewfoldLabs\WP\Module\AIAssistant\Search\SynonymSuggestor;
 use NewfoldLabs\WP\Module\AIAssistant\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIAssistant\Services\KnowledgeStore;
 use WP_REST_Request;
@@ -76,6 +78,48 @@ class SearchController {
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'stats' ),
 				'permission_callback' => array( $this, 'admin_permission' ),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/search/synonyms',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_synonyms' ),
+					'permission_callback' => array( $this, 'admin_permission' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'update_synonyms' ),
+					'permission_callback' => array( $this, 'admin_permission' ),
+					'args'                => array(
+						'synonyms' => array(
+							'required' => true,
+							'type'     => 'object',
+						),
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/search/synonyms/suggest',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'suggest_synonyms' ),
+				'permission_callback' => array( $this, 'admin_permission' ),
+				'args'                => array(
+					'method' => array(
+						'required'          => false,
+						'type'              => 'string',
+						'default'           => 'both',
+						'enum'              => array( 'content', 'llm', 'both' ),
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
 			)
 		);
 	}
@@ -179,6 +223,58 @@ class SearchController {
 	 */
 	public function stats() {
 		return rest_ensure_response( Schema::get_index_status() );
+	}
+
+	/**
+	 * GET synonym map.
+	 *
+	 * @return \WP_REST_Response
+	 */
+	public function get_synonyms() {
+		return rest_ensure_response(
+			array(
+				'defaults' => Synonyms::get_default_map(),
+				'custom'   => Synonyms::get_custom_map(),
+				'merged'   => Synonyms::get_map(),
+			)
+		);
+	}
+
+	/**
+	 * POST synonym map.
+	 *
+	 * @param WP_REST_Request $request Request object.
+	 * @return \WP_REST_Response
+	 */
+	public function update_synonyms( WP_REST_Request $request ) {
+		$custom = Synonyms::update_custom_map( $request->get_param( 'synonyms' ) );
+
+		return rest_ensure_response(
+			array(
+				'custom' => $custom,
+				'merged' => Synonyms::get_map(),
+			)
+		);
+	}
+
+	/**
+	 * POST /search/synonyms/suggest — Propose synonyms from content analysis and/or LLM.
+	 *
+	 * @param WP_REST_Request $request Request object.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function suggest_synonyms( WP_REST_Request $request ) {
+		$method      = $request->get_param( 'method' ) ?: 'both';
+		$suggestor   = new SynonymSuggestor();
+		$suggestions = $suggestor->suggest( $method );
+
+		return rest_ensure_response(
+			array(
+				'method'      => $method,
+				'count'       => count( $suggestions ),
+				'suggestions' => $suggestions,
+			)
+		);
 	}
 
 	/**

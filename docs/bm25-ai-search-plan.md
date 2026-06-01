@@ -1,8 +1,8 @@
 # AI-Enhanced Search for `wp-module-ai-assistant`
 
-**Status:** Planning
+**Status:** In Development (POC validated)
 **Owner:** AB
-**Last updated:** 2026-05-27
+**Last updated:** 2026-05-29
 
 ## 1. Problem Statement
 
@@ -134,6 +134,7 @@ Parameters (exposed as filters for tuning):
 - Admin notice shows progress: "Indexing: 340/2,103 posts"
 - Assistant runs in "limited mode" until indexing completes
 - Manual "Rebuild Now" button uses Action Scheduler if available, else chunked AJAX
+- **Synonym auto-generation:** On rebuild complete, fires `nfd_ai_assistant_search_rebuild_complete` hook which triggers LLM-based synonym generation via `SynonymSuggestor::from_llm()` — synonyms are applied directly without admin review
 
 ### Bulk-import protection
 - Hook `import_start` / `import_end` (WP Importer, WP All Import, WooCommerce CSV)
@@ -144,16 +145,19 @@ Parameters (exposed as filters for tuning):
 
 When the AI assistant receives a visitor message:
 
-1. **Tokenize** visitor's message (same tokenizer used for indexing)
-2. **Intent classify** (optional, fast path): navigational, transactional, informational, support
-3. **Expand query** via synonym map (e.g., "wifi" → "internet", "gf" → "gluten free")
-4. **BM25 search** — fetch candidate posts, score, rank
-5. **Apply post-type boost** based on intent (transactional → products, navigational → pages)
-6. **Return top 5-7** with full excerpts
-7. **`ContextBuilder`** assembles the LLM payload:
-   - Static business core (identity, hours, contact) — always included
-   - Retrieved excerpts — query-specific
-8. **Send to LLM**
+1. **Tokenize** visitor's message (same tokenizer used for indexing) with boundary-aware splitting
+2. **Expand query** via synonym map (e.g., "wifi" → "internet", "gf" → "gluten free") — bidirectional map built from LLM-generated suggestions
+3. **BM25 search** — fetch candidate posts, score, rank, return top **20** (increased from 5 to ensure long homepages with footer content are captured)
+4. **Build excerpts** using **last-occurrence heuristic** — finds the LAST match of any query term in the full content and builds the excerpt 500 chars before it; naturally captures footer content (hours, contact, location) without hardcoded keywords
+5. **Assemble LLM payload** via `PromptAssembler`:
+   - Role + answer policy (natural tone, "like a helpful employee", no research framing)
+   - Site brief from KnowledgeStore
+   - Curated facts
+   - CTAs catalog
+   - Relevant pages (top 20 with optimized excerpts)
+   - Conversation history
+   - Current question
+6. **Send to LLM** via `AiAssistantWorker::ask()` (Cloudflare Worker)
 
 ## 8. REST API Endpoints
 
@@ -192,34 +196,29 @@ Pure BM25 is keyword search. The "AI-enhanced" label is earned by these layers o
 - Regex fast-path for common patterns; LLM fallback for ambiguous
 - Cheap, noticeably improves perceived quality
 
-### Auto-synonym discovery
-- Track visitor queries that return zero/poor results
-- Surface to admin for synonym map curation
-- Optionally auto-suggest synonyms from LLM analysis
+### Auto-synonym generation
+- On BM25 index rebuild, calls `SynonymSuggestor::from_llm()` which sends all page titles + excerpts to the Worker for LLM analysis
+- Returns suggested synonym groups (e.g. "hours" → ["opening", "times"])
+- **Bidirectional expansion:** each entry also creates the inverse ("opening" → ["hours", "times"], "times" → ["hours", "opening"])
+- Suggestions are stored directly as the custom synonym map (replaces old content-based suggestions entirely)
+- Admin can review and tweak via the Synonyms admin UI afterwards
 
 ## 10. Tokenization Strategy
 
-**v1 (ship this):**
+**v1 (shipped):**
 - Lowercase
-- Split on `\W+`
 - Drop English stopwords (small list, ~150 words)
 - Minimum length 2
 - Strip shortcodes and HTML before tokenizing
-- **Cap content indexing at first 500 content-tokens** (title + excerpt always indexed in full) — keeps the index lean and reduces boilerplate noise
-  - The cap is applied to **content tokens** (post stopword/short-token removal), not raw tokens — at the same row cost this reaches ~50% deeper into the body than capping raw tokens, because budget isn't spent on stopwords
-  - Exposed as a per-post-type filter so it can be tuned later without a code change:
-    ```php
-    apply_filters( 'newfold_aia_content_token_cap', 500, $post_type );
-    ```
-  - 500 is a deliberate starting default, not a validated optimum. It comfortably covers short content (products, pages, menus, most FAQs). It under-covers long-form blog posts — testing on a ~2,500-word structured guide showed a 500 content-token cap reaches only ~30% of the body, so answer-bearing tail content (e.g. a closing FAQ) can be present in the post but absent from the index. Revisit per post type once real zero-result query data exists; long-form `post` types are the likely candidates for a higher cap.
+- **Cap content indexing** — default 500 tokens for `post`, 2,000 for `page`; tuneable per post type via `newfold_aia_content_token_cap`
+- **Boundary-aware splitting** — regex splits on: non-alphanumeric characters, camelCase/PascalCase boundaries, letter-to-digit and digit-to-letter transitions. This handles Gutenberg-rendered content where words can be fused (e.g. "mondayclosedtuesday7" → "monday", "closed", "tuesday"). Splitting happens BEFORE lowercasing so case transitions are visible.
+- **Caution:** The regex must NOT use the `/i` flag — case-insensitivity makes `[a-z]` and `[A-Z]` equivalent in lookbehinds, causing every word to be split into individual characters (~5,000x token explosion).
 
 **Deferred to v2:**
-- Porter stemming (opt-in)
+- Porter stemming (opt-in) — requires keeping synonym map keys in sync
 - Phrase matching with adjacency boost
 - CJK segmentation
 - Currency/emoji handling
-
-The temptation to over-engineer the tokenizer is real. Ship the simple thing; add complexity only when real visitor queries demonstrate need.
 
 ## 11. Performance Considerations
 
@@ -270,48 +269,52 @@ This ceiling should be surfaced in admin: when a site crosses the threshold, war
 Sequential, each step independently shippable and testable.
 
 ### Phase 1: Foundation
-- [ ] Schema + migration
-- [ ] `Tokenizer` class
-- [ ] `Indexer` class
-- [ ] `save_post` / `before_delete_post` hooks
-- [ ] **Outcome:** Index is built and maintained, but nothing queries it yet
+- [x] Schema + migration
+- [x] `Tokenizer` class
+- [x] `Indexer` class
+- [x] `save_post` / `before_delete_post` hooks
+- [x] **Outcome:** Index is built and maintained, but nothing queries it yet
 
 ### Phase 2: Search Engine
-- [ ] `Scorer` (BM25 math)
-- [ ] `BM25\Provider` implementing `SearchProvider`
-- [ ] `SearchService` public API
-- [ ] Field weighting
-- [ ] **Outcome:** Search works via PHP calls
+- [x] `Scorer` (BM25 math)
+- [x] `BM25\Provider` implementing `SearchProvider`
+- [x] `SearchService` public API
+- [x] Field weighting
+- [x] **Outcome:** Search works via PHP calls
 
 ### Phase 3: Bulk Indexing
-- [ ] WP-Cron chunked indexer
-- [ ] Admin progress UI
-- [ ] "Limited mode" flag for assistant during initial index
-- [ ] Bulk-import hooks
-- [ ] **Outcome:** Works correctly on existing sites with thousands of posts
+- [x] WP-Cron chunked indexer
+- [x] Admin progress UI
+- [x] "Limited mode" flag for assistant during initial index
+- [x] Bulk-import hooks
+- [x] **Outcome:** Works correctly on existing sites with thousands of posts
 
 ### Phase 4: REST API
-- [ ] `SearchController` with `/search`, `/rebuild`, `/stats`, `/synonyms`
-- [ ] Auth + rate limiting
-- [ ] **Outcome:** Other modules and themes can consume the search
+- [x] `SearchController` with `/search`, `/rebuild`, `/stats`, `/synonyms`
+- [x] Auth + rate limiting
+- [x] **Outcome:** Other modules and themes can consume the search
 
 ### Phase 5: AI Assistant Integration
-- [ ] `ContextBuilder` refactor — drop the full corpus dump
-- [ ] Use `SearchService` to fetch top 5-7 per visitor query
-- [ ] Static business core stays in every prompt
-- [ ] **Outcome:** The original problem is solved. Token usage drops ~80%, answer quality improves.
+- [x] `ContextBuilder` refactor — drop the full corpus dump
+- [x] Use `SearchService` to fetch top 20 per visitor query
+- [x] Last-occurrence excerpt targeting (captures footer content)
+- [x] Natural tone system prompt (no research framing)
+- [x] Static business core stays in every prompt
+- [x] **Outcome:** The original problem is solved. Token usage drops significantly, answer quality improves.
 
 ### Phase 6: AI-Enhanced Layer
-- [ ] Synonym map storage + admin UI
-- [ ] LLM-driven query expansion
-- [ ] Intent classification (regex + LLM fallback)
-- [ ] Post-type boosting by intent
-- [ ] **Outcome:** Search is meaningfully "AI-enhanced", not just keyword
+- [x] Synonym map storage + admin UI
+- [x] LLM-driven synonym generation on rebuild (`SynonymSuggestor::from_llm()`)
+- [x] Bidirectional synonym expansion (inverse entries auto-generated)
+- [x] Synonym auto-trigger on BM25 rebuild complete hook
+- [x] Intent classification (Worker-based LLM via `IntentClassifier`)
+- [x] Post-type boosting by intent (applied before `arsort()` in `Provider::search()`)
+- [x] **Outcome:** Search is meaningfully "AI-enhanced", not just keyword
 
 ### Phase 7: Polish
 - [ ] `pre_get_posts` filter to replace WordPress core search (opt-in)
-- [ ] Auto-synonym discovery from poor-result queries
 - [ ] Admin analytics: top queries, zero-result queries, slow queries
+- [ ] Token optimization: trim excerpts for lower-ranked results
 
 ## 13. Decisions to Lock In Before Coding
 
@@ -323,14 +326,20 @@ Sequential, each step independently shippable and testable.
 | Synonyms storage | `wp_options` as JSON | Simple, cacheable, exportable |
 | Multisite | Out of scope | Single-site only; revisit when needed |
 | Indexed fields | title, excerpt, content | Standard set; meta fields opt-in later |
-| Content indexing | Capped at 500 content-tokens, per-post-type filter | Lean default; tunable later without code change |
+| Content indexing | Capped per post type; `post` defaults to 500 content-tokens, `page` defaults to 2,000 | Pages/homepages often contain business-critical sections near the bottom; still tunable via `newfold_aia_content_token_cap` |
 | Index schema | Packed-field columns | ~3x fewer rows than per-field rows |
 | Large-site ceiling | ~20K posts / ~5M rows → sidecar | Above this, BM25-on-shared-MySQL is a bad neighbor |
-| Indexed post types | Filterable, default to `post`, `page`, `product` | Site owner can extend |
+| Indexed post types | Filterable, default to `post`, `page`; all CPTs explicit opt-in | Avoid surprising index growth; WooCommerce and other CPTs can opt in through `nfd_ai_assistant_indexable_post_types` |
+| Excerpt targeting | Last-occurrence of any query term | Hours/contact/location lives at page bottom; last match naturally captures footer content without hardcoded keywords |
+| Retrieval depth (`top_k`) | 20 | Long homepages with few token matches are penalised by BM25 length normalisation; 20 ensures the homepage enters the result set for general queries |
+| Boundary-aware tokenizer | Split on: non-alnum, camelCase, letter-number | Gutenberg block rendering can fuse words; boundary splitting recovers individual terms. Regex must skip `/i` flag to avoid lookbehind explosion |
+| Synonym generation | LLM-based auto-generation on rebuild | Replaced content-based PMI/Jaccard approach. LLM produces semantically coherent groups, not just co-occurrence stats |
+| Logging discipline | Keep only edge-case/error logs; suppress routine per-request logs | Debug session showed verbose per-excerpt logging creates noise; only no-tokens, zero-docs, and skipped-post edge cases get logged |
 
 ## 14. Out of Scope (For Now)
 
 - Multisite / network-level indexing
+- WooCommerce-specific behavior, including product/variation indexing
 - Semantic/vector search
 - Cross-site federated search
 - Real-time index updates via WebSockets
@@ -342,8 +351,6 @@ Sequential, each step independently shippable and testable.
 - Should the search endpoint require authentication for the AI assistant's own use, or is rate-limited public access acceptable for anonymous visitors?
 - What's the right default for max index size before warning the admin?
 - Do we need a "pause indexing" mode for sites doing scheduled bulk content operations?
-- How do we handle WooCommerce variations — index parent only, or each variation separately?
-- Should custom post types be auto-discovered or require explicit opt-in?
 
 ---
 

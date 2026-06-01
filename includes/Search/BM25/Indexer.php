@@ -238,6 +238,11 @@ class Indexer {
 		}
 
 		update_option( 'nfd_ai_assistant_search_indexed_at', gmdate( 'c' ), false );
+
+		/**
+		 * Fires after a full BM25 search index rebuild finishes.
+		 */
+		do_action( 'nfd_ai_assistant_search_rebuild_complete' );
 	}
 
 	/**
@@ -286,6 +291,11 @@ class Indexer {
 			update_option( 'nfd_ai_assistant_search_indexed_at', gmdate( 'c' ), false );
 			wp_clear_scheduled_hook( self::REBUILD_HOOK );
 			Schema::invalidate_stats();
+
+			/**
+			 * Fires after a full BM25 search index rebuild finishes.
+			 */
+			do_action( 'nfd_ai_assistant_search_rebuild_complete' );
 		} else {
 			$this->schedule_next_batch( time() + 5 );
 		}
@@ -384,14 +394,45 @@ class Indexer {
 	 * @return array{title:array<int,string>,excerpt:array<int,string>,content:array<int,string>}
 	 */
 	private function tokenize_post_fields( \WP_Post $post ) {
-		$excerpt = has_excerpt( $post ) ? get_the_excerpt( $post ) : wp_trim_words( wp_strip_all_tags( $post->post_content ), 40, '' );
-		$cap     = (int) apply_filters( 'newfold_aia_content_token_cap', 500, $post->post_type );
+		$content = $this->prepare_indexable_content( $post->post_content );
+		$excerpt = has_excerpt( $post ) ? get_the_excerpt( $post ) : wp_trim_words( $content, 40, '' );
+		$cap     = (int) apply_filters( 'newfold_aia_content_token_cap', $this->default_content_token_cap( $post->post_type ), $post->post_type );
 
 		return array(
 			'title'   => $this->tokenizer->tokenize( get_the_title( $post ), 0, $post->post_type ),
 			'excerpt' => $this->tokenizer->tokenize( $excerpt, 0, $post->post_type ),
-			'content' => $this->tokenizer->tokenize( $post->post_content, max( 1, $cap ), $post->post_type ),
+			'content' => $this->tokenizer->tokenize( $content, max( 1, $cap ), $post->post_type ),
 		);
+	}
+
+	/**
+	 * Convert block markup to visible text before tokenization.
+	 *
+	 * @param string $content Raw post content.
+	 * @return string
+	 */
+	private function prepare_indexable_content( $content ) {
+		$content = (string) $content;
+
+		if ( function_exists( 'do_blocks' ) && function_exists( 'has_blocks' ) && has_blocks( $content ) ) {
+			$content = do_blocks( $content );
+		}
+
+		return wp_strip_all_tags( $content );
+	}
+
+	/**
+	 * Default content token cap by post type.
+	 *
+	 * @param string $post_type Post type.
+	 * @return int
+	 */
+	private function default_content_token_cap( $post_type ) {
+		if ( 'page' === $post_type ) {
+			return 2000;
+		}
+
+		return 500;
 	}
 
 	/**

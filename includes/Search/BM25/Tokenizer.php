@@ -28,12 +28,24 @@ class Tokenizer {
 		}
 
 		$text = wp_strip_all_tags( $text );
-		$text = strtolower( html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
-		$raw  = preg_split( '/[^a-z0-9]+/i', $text );
+		$text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+
+		// Split on:
+		// 1. Non-alphanumeric characters (spaces, punctuation, etc.)
+		// 2. camelCase / PascalCase boundaries
+		// 3. Letter-to-number and number-to-letter transitions
+		// Case-sensitive splitting must happen BEFORE strtolower().
+		$raw = preg_split(
+			'/[^a-zA-Z0-9]+|(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z])|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/',
+			$text
+		);
 
 		if ( ! is_array( $raw ) ) {
 			return array();
 		}
+
+		$raw  = array_map( 'strtolower', $raw );
+		$text = strtolower( $text ); // keep lowered copy for filter
 
 		$stopwords = array_fill_keys( $this->stopwords(), true );
 		$tokens    = array();
