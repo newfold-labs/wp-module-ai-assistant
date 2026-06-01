@@ -49,6 +49,13 @@
 				<input id="nfd-aia-input" type="text" maxlength="500" placeholder="Ask a question..." autocomplete="off" />
 				<button type="submit" class="nfd-aia-send">Send</button>
 			</form>
+			<div class="nfd-aia-disclaimer">
+				<span>AI can make mistakes. Double-check important content.</span>
+				<button class="nfd-aia-disclaimer__info" type="button" aria-label="Learn more about AI accuracy">
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+					<span class="nfd-aia-disclaimer__tooltip" role="tooltip">We use AI to provide helpful info, but please double-check the linked articles for accuracy and contact support if you have questions. By continuing, you agree to our Privacy Policy.</span>
+				</button>
+			</div>
 		</div>
 	`;
 
