@@ -101,15 +101,18 @@ class Schema {
 	/**
 	 * Return corpus-wide stats used by BM25 scoring.
 	 *
+	 * @param bool $force_refresh Skip the cached option and recompute from the tables.
 	 * @return array{total_docs:int,avgdl:float}
 	 */
-	public static function get_stats() {
-		$cached = get_option( self::STATS_OPTION, array() );
-		if ( is_array( $cached ) && isset( $cached['total_docs'], $cached['avgdl'] ) ) {
-			return array(
-				'total_docs' => (int) $cached['total_docs'],
-				'avgdl'      => (float) $cached['avgdl'],
-			);
+	public static function get_stats( $force_refresh = false ) {
+		if ( ! $force_refresh ) {
+			$cached = get_option( self::STATS_OPTION, array() );
+			if ( is_array( $cached ) && isset( $cached['total_docs'], $cached['avgdl'] ) ) {
+				return array(
+					'total_docs' => (int) $cached['total_docs'],
+					'avgdl'      => (float) $cached['avgdl'],
+				);
+			}
 		}
 
 		global $wpdb;
@@ -138,8 +141,10 @@ class Schema {
 
 		$terms_table = self::terms_table();
 		$docs_table  = self::docs_table();
-		$stats       = self::get_stats();
-		$progress    = Indexer::get_rebuild_progress();
+		// Diagnostics must reflect the live tables; this also re-syncs the
+		// cached stats option consumed by the search scoring hot path.
+		$stats    = self::get_stats( true );
+		$progress = Indexer::get_rebuild_progress();
 
 		$term_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$terms_table}" );
 		$terms     = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT term) FROM {$terms_table}" );

@@ -7,6 +7,7 @@
 
 namespace NewfoldLabs\WP\Module\AIAssistant\RestApi;
 
+use NewfoldLabs\WP\Module\AIAssistant\Search\BM25\Schema as BM25Schema;
 use NewfoldLabs\WP\Module\AIAssistant\Services\AiAssistantWorker;
 use NewfoldLabs\WP\Module\AIAssistant\Services\CapabilityGate;
 use NewfoldLabs\WP\Module\AIAssistant\Services\HomepageExtractor;
@@ -205,13 +206,29 @@ class KnowledgeController {
 	private function build_status_payload() {
 		$snapshot = KnowledgeStore::get_snapshot();
 		$brief    = KnowledgeStore::get_brief();
-		$business = ! empty( $snapshot['business'] ) ? $snapshot['business'] : array();
 
-		$quality_tier       = KnowledgeStore::get_quality_tier();
-		$description_source = ! empty( $business['description_source'] ) ? (string) $business['description_source'] : '';
-		$content_count      = ! empty( $snapshot['content_count'] ) ? (int) $snapshot['content_count'] : 0;
-		$site_mode          = ! empty( $snapshot['site_mode'] ) ? (string) $snapshot['site_mode'] : 'business';
-		$business_description = KnowledgePrefill::get_business_description();
+		$quality_tier = KnowledgeStore::get_quality_tier();
+		$site_mode    = ! empty( $snapshot['site_mode'] ) ? (string) $snapshot['site_mode'] : 'business';
+
+		// Resolve description and its source live so the checklist reflects the
+		// current options, not the frozen snapshot value.
+		$admin_desc = trim( (string) get_option( 'nfd_ai_assistant_business_description', '' ) );
+		if ( '' !== $admin_desc ) {
+			$business_description = $admin_desc;
+			$description_source   = 'admin';
+		} else {
+			list( $business_description, $description_source ) = KnowledgePrefill::resolve_automatic_description();
+		}
+
+		// Count published posts live so the checklist threshold is accurate even
+		// when the snapshot is stale.
+		$pages_count   = wp_count_posts( 'page' );
+		$posts_count   = wp_count_posts( 'post' );
+		$content_count = (int) ( ( $pages_count->publish ?? 0 ) + ( $posts_count->publish ?? 0 ) );
+
+		// Always read BM25 totals from the live table so the banner stays in
+		// sync with the Search-tab stats even when the snapshot is stale.
+		$bm25_stats = BM25Schema::get_stats( true );
 
 		$feature_enabled = function_exists( 'NewfoldLabs\WP\Module\Features\isEnabled' )
 			&& \NewfoldLabs\WP\Module\Features\isEnabled( 'ai-site-assistant' );
@@ -225,18 +242,28 @@ class KnowledgeController {
 			'brief_version'        => ! empty( $brief['brief_version'] ) ? (string) $brief['brief_version'] : '',
 			'content_count'        => $content_count,
 			'corpus_count'         => ! empty( $snapshot['corpus'] ) ? count( $snapshot['corpus'] ) : 0,
+			'search_index_docs'    => $bm25_stats['total_docs'],
 			'description_source'   => $description_source,
 			'business_description' => $business_description,
 			'curated_facts'        => KnowledgePrefill::get_curated_facts(),
 			'ctas_catalog'         => ! empty( $snapshot['ctas_catalog'] ) ? $snapshot['ctas_catalog'] : array(),
 			'custom_ctas'          => $this->get_custom_ctas(),
 			'hidden_cta_urls'      => $this->get_hidden_cta_urls(),
-			'tier_checklist'       => QualityTierChecklist::build(
-				$quality_tier,
-				$description_source,
-				$content_count,
-				$site_mode,
-				$business_description
+			'tier_checklist'       => array_merge(
+				QualityTierChecklist::build(
+					$quality_tier,
+					$description_source,
+					$content_count,
+					$site_mode,
+					$business_description
+				),
+				array(
+					array(
+						'id'    => 'search_index',
+						'label' => __( 'Search index built', 'wp-module-ai-assistant' ),
+						'done'  => $bm25_stats['total_docs'] > 0,
+					),
+				)
 			),
 			'next_tier_hint'       => QualityTierChecklist::next_tier_hint( $quality_tier ),
 		);
