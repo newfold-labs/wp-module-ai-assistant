@@ -271,7 +271,7 @@ class KnowledgeStore {
 	 * @return array<int, string>
 	 */
 	public static function indexable_post_types() {
-		$types = array( 'page', 'post' );
+		$types = array( 'page', 'post', 'product' );
 		return apply_filters( 'nfd_ai_assistant_indexable_post_types', $types );
 	}
 }
