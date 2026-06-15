@@ -237,12 +237,7 @@ class Indexer {
 			return;
 		}
 
-		update_option( 'nfd_ai_assistant_search_indexed_at', gmdate( 'c' ), false );
-
-		/**
-		 * Fires after a full BM25 search index rebuild finishes.
-		 */
-		do_action( 'nfd_ai_assistant_search_rebuild_complete' );
+		$this->mark_rebuild_complete();
 	}
 
 	/**
@@ -288,14 +283,8 @@ class Indexer {
 		if ( $complete ) {
 			$progress['status']      = 'complete';
 			$progress['finished_at'] = gmdate( 'c' );
-			update_option( 'nfd_ai_assistant_search_indexed_at', gmdate( 'c' ), false );
 			wp_clear_scheduled_hook( self::REBUILD_HOOK );
-			Schema::invalidate_stats();
-
-			/**
-			 * Fires after a full BM25 search index rebuild finishes.
-			 */
-			do_action( 'nfd_ai_assistant_search_rebuild_complete' );
+			$this->mark_rebuild_complete();
 		} else {
 			$this->schedule_next_batch( time() + 5 );
 		}
@@ -385,6 +374,21 @@ class Indexer {
 		if ( ! wp_next_scheduled( self::REBUILD_HOOK ) ) {
 			wp_schedule_single_event( $timestamp, self::REBUILD_HOOK );
 		}
+	}
+
+	/**
+	 * Persist rebuild completion and notify listeners.
+	 *
+	 * @return void
+	 */
+	private function mark_rebuild_complete() {
+		KnowledgeStore::mark_search_index_built_at();
+		Schema::invalidate_stats();
+
+		/**
+		 * Fires after a full BM25 search index rebuild finishes.
+		 */
+		do_action( 'nfd_ai_assistant_search_rebuild_complete' );
 	}
 
 	/**

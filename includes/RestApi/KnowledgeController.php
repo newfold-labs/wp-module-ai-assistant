@@ -240,7 +240,7 @@ class KnowledgeController {
 			'quality_tier'         => $quality_tier,
 			'site_mode'            => $site_mode,
 			'site_mode_override'   => (string) get_option( 'nfd_ai_assistant_site_mode_override', '' ),
-			'built_at'             => ! empty( $snapshot['built_at'] ) ? (string) $snapshot['built_at'] : '',
+			'built_at'             => KnowledgeStore::get_search_index_built_at(),
 			'brief_version'        => ! empty( $brief['brief_version'] ) ? (string) $brief['brief_version'] : '',
 			'content_count'        => $content_count,
 			'corpus_count'         => ! empty( $snapshot['corpus'] ) ? count( $snapshot['corpus'] ) : 0,

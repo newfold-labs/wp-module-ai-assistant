@@ -7,6 +7,8 @@
 
 namespace NewfoldLabs\WP\Module\AIAssistant\Search\BM25;
 
+use NewfoldLabs\WP\Module\AIAssistant\Services\KnowledgeStore;
+
 /**
  * Owns database table names and schema installation.
  */
@@ -148,14 +150,12 @@ class Schema {
 
 		$term_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$terms_table}" );
 		$terms     = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT term) FROM {$terms_table}" );
-		$indexed   = get_option( 'nfd_ai_assistant_search_indexed_at', '' );
-
 		return array(
 			'total_docs'    => $stats['total_docs'],
 			'avgdl'         => $stats['avgdl'],
 			'term_rows'     => $term_rows,
 			'unique_terms'  => $terms,
-			'last_indexed'  => is_string( $indexed ) ? $indexed : '',
+			'last_indexed'  => KnowledgeStore::get_search_index_built_at(),
 			'rebuild'       => $progress,
 			'limited_mode'  => 'running' === $progress['status'],
 			'tables'        => array(
