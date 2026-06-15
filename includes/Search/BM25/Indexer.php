@@ -432,6 +432,10 @@ class Indexer {
 			return 2000;
 		}
 
+		if ( 'product' === $post_type ) {
+			return 1000;
+		}
+
 		return 500;
 	}
 

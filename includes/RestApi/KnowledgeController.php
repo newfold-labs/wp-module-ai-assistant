@@ -222,9 +222,11 @@ class KnowledgeController {
 
 		// Count published posts live so the checklist threshold is accurate even
 		// when the snapshot is stale.
-		$pages_count   = wp_count_posts( 'page' );
-		$posts_count   = wp_count_posts( 'post' );
-		$content_count = (int) ( ( $pages_count->publish ?? 0 ) + ( $posts_count->publish ?? 0 ) );
+		$content_count = 0;
+		foreach ( KnowledgeStore::indexable_post_types() as $post_type ) {
+			$counts = wp_count_posts( $post_type );
+			$content_count += (int) ( $counts->publish ?? 0 );
+		}
 
 		// Always read BM25 totals from the live table so the banner stays in
 		// sync with the Search-tab stats even when the snapshot is stale.

@@ -310,8 +310,7 @@ class Provider implements SearchProvider {
 	 * Return boost multipliers by intent for each post type.
 	 *
 	 * Boost config can be overridden via the
-	 * 'newfold_aia_bm25_intent_boosts' filter (e.g. for WooCommerce
-	 * to add 'product' => 1.5 under transactional intent).
+	 * 'newfold_aia_bm25_intent_boosts' filter.
 	 *
 	 * @param string $intent One of navigational, transactional, informational, support.
 	 * @return array<string, float> Post-type => boost factor.
@@ -322,11 +321,13 @@ class Provider implements SearchProvider {
 				'page' => 1.3,
 			),
 			'transactional' => array(
-				'page' => 1.0,
+				'page'    => 1.0,
+				'product' => 1.5,
 			),
 			'informational' => array(
-				'post' => 1.3,
-				'page' => 1.0,
+				'post'    => 1.3,
+				'page'    => 1.0,
+				'product' => 1.2,
 			),
 			'support' => array(),
 		);
