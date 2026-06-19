@@ -272,10 +272,16 @@ class Indexer {
 			$this->index( $post_id );
 		}
 
-		$processed = min( (int) $progress['total'], (int) $progress['processed'] + count( $query->posts ) );
-		$complete  = empty( $query->posts ) || $processed >= (int) $progress['total'];
+		// Completion is driven by the batch itself, never by the cached total.
+		// wp_count_posts() can under-report after programmatic/bulk inserts, so
+		// the total is treated as a display hint only: a short (or empty) page
+		// is the authoritative signal that every indexable post has been walked.
+		$batch_count = count( $query->posts );
+		$processed   = (int) $progress['processed'] + $batch_count;
+		$complete    = $batch_count < $batch_size;
 
 		$progress['processed']  = $processed;
+		$progress['total']      = max( (int) $progress['total'], $processed );
 		$progress['page']       = $page + 1;
 		$progress['batch_size'] = $batch_size;
 		$progress['updated_at'] = gmdate( 'c' );
@@ -344,15 +350,22 @@ class Indexer {
 	 * @return int
 	 */
 	private function count_indexable_posts() {
-		$total = 0;
-		foreach ( KnowledgeStore::indexable_post_types() as $post_type ) {
-			$count = wp_count_posts( $post_type );
-			if ( isset( $count->publish ) ) {
-				$total += (int) $count->publish;
-			}
-		}
+		// Use a live WP_Query row count rather than wp_count_posts(), whose
+		// per-status cache can be stale after programmatic or bulk inserts and
+		// would otherwise under-report the work to be done.
+		$query = new \WP_Query(
+			array(
+				'post_type'              => KnowledgeStore::indexable_post_types(),
+				'post_status'            => 'publish',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => false,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
 
-		return $total;
+		return (int) $query->found_posts;
 	}
 
 	/**
