@@ -210,12 +210,12 @@ Pure BM25 is keyword search. The "AI-enhanced" label is earned by these layers o
 - Drop English stopwords (small list, ~150 words)
 - Minimum length 2
 - Strip shortcodes and HTML before tokenizing
-- **Cap content indexing** — default 500 tokens for `post`, 2,000 for `page`; tuneable per post type via `newfold_aia_content_token_cap`
+- **Cap content indexing** — default 500 tokens for `post`, 2,000 for `page`, 1,000 for `product`; tuneable per post type via `newfold_aia_content_token_cap`
+- **Stemming** — lightweight English plural/suffix normalization (`Tokenizer::stem()`), applied symmetrically at index and query time and to synonym keys, so singular/plural variants collapse to one term (e.g. "almonds" → "almond")
 - **Boundary-aware splitting** — regex splits on: non-alphanumeric characters, camelCase/PascalCase boundaries, letter-to-digit and digit-to-letter transitions. This handles Gutenberg-rendered content where words can be fused (e.g. "mondayclosedtuesday7" → "monday", "closed", "tuesday"). Splitting happens BEFORE lowercasing so case transitions are visible.
 - **Caution:** The regex must NOT use the `/i` flag — case-insensitivity makes `[a-z]` and `[A-Z]` equivalent in lookbehinds, causing every word to be split into individual characters (~5,000x token explosion).
 
 **Deferred to v2:**
-- Porter stemming (opt-in) — requires keeping synonym map keys in sync
 - Phrase matching with adjacency boost
 - CJK segmentation
 - Currency/emoji handling
@@ -320,16 +320,16 @@ Sequential, each step independently shippable and testable.
 
 | Decision | Lean Toward | Why |
 |---|---|---|
-| Stemming in v1 | No | Adds complexity, hurts multilingual sites; opt-in later |
+| Stemming | Yes — lightweight plural/suffix | Singular/plural query mismatch was a real recall gap (e.g. "almonds" missing "Almond croissant"); applied symmetrically to index, query, and synonym keys |
 | Stopword list | Small English list | ~150 words; configurable via filter |
 | Phrase matching | v2 | ~20 lines but adds tokenizer complexity |
 | Synonyms storage | `wp_options` as JSON | Simple, cacheable, exportable |
 | Multisite | Out of scope | Single-site only; revisit when needed |
 | Indexed fields | title, excerpt, content | Standard set; meta fields opt-in later |
-| Content indexing | Capped per post type; `post` defaults to 500 content-tokens, `page` defaults to 2,000 | Pages/homepages often contain business-critical sections near the bottom; still tunable via `newfold_aia_content_token_cap` |
+| Content indexing | Capped per post type; `post` 500, `page` 2,000, `product` 1,000 content-tokens | Pages/homepages often contain business-critical sections near the bottom; still tunable via `newfold_aia_content_token_cap` |
 | Index schema | Packed-field columns | ~3x fewer rows than per-field rows |
 | Large-site ceiling | ~20K posts / ~5M rows → sidecar | Above this, BM25-on-shared-MySQL is a bad neighbor |
-| Indexed post types | Filterable, default to `post`, `page`; all CPTs explicit opt-in | Avoid surprising index growth; WooCommerce and other CPTs can opt in through `nfd_ai_assistant_indexable_post_types` |
+| Indexed post types | Filterable, default to `page`, `post`, `product`; other CPTs explicit opt-in | `product` ships indexed for WooCommerce stores; other CPTs can opt in through `nfd_ai_assistant_indexable_post_types` |
 | Excerpt targeting | Last-occurrence of any query term | Hours/contact/location lives at page bottom; last match naturally captures footer content without hardcoded keywords |
 | Retrieval depth (`top_k`) | 20 | Long homepages with few token matches are penalised by BM25 length normalisation; 20 ensures the homepage enters the result set for general queries |
 | Boundary-aware tokenizer | Split on: non-alnum, camelCase, letter-number | Gutenberg block rendering can fuse words; boundary splitting recovers individual terms. Regex must skip `/i` flag to avoid lookbehind explosion |

@@ -19,6 +19,7 @@ This design is intentional: it runs on **shared hosting with standard MySQL** (n
 - Processes visitor questions through a Cloudflare Worker LLM pipeline
 - RAG-style retrieval: fetches only the top-20 relevant pages per query (not the full corpus)
 - Natural, conversational responses tuned per site brief
+- Strict JSON answer contract (`answer`, `suggestions`, `ctas`, `sources`, `needs_human`) enforced server-side via the Worker's structured outputs; the role/answer policy and schema live in the Worker prompt, so the module sends only per-request context (site brief, retrieved pages, conversation)
 - Simultaneous streaming to the frontend via Server-Sent Events
 
 ### BM25 Search Engine
@@ -28,7 +29,8 @@ A **PHP-native BM25 search engine** built directly into the module with custom M
 - **Zero external infra** — runs on shared hosting with standard MySQL (no FULLTEXT dependency)
 - **Custom BM25 scoring** with configurable k₁, b, and per-field weights (title ×3, excerpt ×2, content ×1)
 - **Boundary-aware tokenizer** — handles Gutenberg-rendered fused content by splitting on camelCase, PascalCase, and letter-number transitions
-- **Content capping** — configurable per post type (default: 500 content tokens for `post`, 2,000 for `page`)
+- **Stemming** — lightweight English plural/suffix normalization applied symmetrically at index and query time, so singular/plural variants match (e.g. "almonds" finds the "Almond croissant" on the menu)
+- **Content capping** — configurable per post type (default: 500 content tokens for `post`, 2,000 for `page`, 1,000 for `product`)
 - **Incremental indexing** via `save_post` / `delete_post` hooks + WP-Cron bulk rebuild
 - **Import protection** — defers indexing during WP Importer/WooCommerce CSV imports
 - **REST API** — public search endpoint, admin rebuild/stats endpoints
@@ -70,6 +72,8 @@ The v1 public widget ships as committed vanilla assets in `build/widget.js` and 
 | `newfold_aia_bm25_b` | BM25 length normalization | 0.75 |
 | `newfold_aia_bm25_field_weights` | Per-field TF weights | title:3, excerpt:2, content:1 |
 | `newfold_aia_bm25_intent_boosts` | Intent-based post-type boost map | varies by intent |
-| `newfold_aia_content_token_cap` | Max content tokens per post type | post:500, page:2000 |
-| `nfd_ai_assistant_indexable_post_types` | Post types included in search index | post, page |
+| `newfold_aia_content_token_cap` | Max content tokens per post type | post:500, page:2000, product:1000 |
+| `nfd_ai_assistant_indexable_post_types` | Post types included in search index | page, post, product |
+| `nfd_ai_assistant_ip_rate_limit` | Max assistant requests per IP (10-min window) | 60 |
+| `nfd_ai_assistant_conversation_rate_limit` | Max messages per conversation (1-hr window) | 25 |
 | `nfd_ai_assistant_bypass_capability` | Bypass Hiive capability check, for testing purposes ONLY | false |
