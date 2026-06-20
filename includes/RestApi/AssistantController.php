@@ -236,7 +236,7 @@ class AssistantController {
 	private function is_ip_rate_limited() {
 		$key   = 'nfd_aia_ip_' . md5( $this->get_client_ip() );
 		$count = (int) get_transient( $key );
-		$limit = (int) apply_filters( 'nfd_ai_assistant_ip_rate_limit', 20 );
+		$limit = (int) apply_filters( 'nfd_ai_assistant_ip_rate_limit', 60 );
 		return $count >= $limit;
 	}
 
@@ -260,7 +260,7 @@ class AssistantController {
 	private function is_conversation_rate_limited( $conversation_id ) {
 		$key   = 'nfd_aia_conv_rate_' . md5( $conversation_id );
 		$count = (int) get_transient( $key );
-		$limit = (int) apply_filters( 'nfd_ai_assistant_conversation_rate_limit', 60 );
+		$limit = (int) apply_filters( 'nfd_ai_assistant_conversation_rate_limit', 25 );
 		return $count >= $limit;
 	}
 
