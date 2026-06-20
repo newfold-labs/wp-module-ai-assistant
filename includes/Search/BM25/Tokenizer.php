@@ -60,13 +60,55 @@ class Tokenizer {
 				continue;
 			}
 
-			$tokens[] = $term;
+			$tokens[] = self::stem( $term );
 			if ( $limit > 0 && count( $tokens ) >= $limit ) {
 				break;
 			}
 		}
 
 		return apply_filters( 'newfold_aia_search_tokens', $tokens, $text, $limit, $post_type );
+	}
+
+	/**
+	 * Reduce a term to a normalized stem so singular/plural and common
+	 * inflections collapse to one form (e.g. "almonds" and "almond" both -> "almond").
+	 *
+	 * Applied symmetrically at index time and query time — both go through
+	 * tokenize() — so the two sides always agree. It is deliberately lightweight
+	 * (English plural/suffix rules only): perfect linguistic accuracy is not the
+	 * goal, only that a given word always maps to the same stem on both sides.
+	 * The function is idempotent (stemming a stem is a no-op).
+	 *
+	 * @param string $term Lowercased token.
+	 * @return string
+	 */
+	public static function stem( $term ) {
+		$term = (string) $term;
+		$len  = strlen( $term );
+
+		// Too short to stem without mangling real words (e.g. "gas", "his").
+		if ( $len < 4 ) {
+			return $term;
+		}
+
+		// pastries -> pastry, berries -> berry.
+		if ( $len > 4 && 'ies' === substr( $term, -3 ) ) {
+			return substr( $term, 0, -3 ) . 'y';
+		}
+
+		// boxes -> box, dishes -> dish, matches -> match, glasses -> glass.
+		if ( $len > 4 && preg_match( '/(ss|x|ch|sh|s|z)es$/', $term ) ) {
+			return substr( $term, 0, -2 );
+		}
+
+		// almonds -> almond, lattes -> latte, croissants -> croissant.
+		// Leave "ss"/"us"/"is" endings alone (glass, status, axis, analysis).
+		$last2 = substr( $term, -2 );
+		if ( 's' === substr( $term, -1 ) && 'ss' !== $last2 && 'us' !== $last2 && 'is' !== $last2 ) {
+			return substr( $term, 0, -1 );
+		}
+
+		return $term;
 	}
 
 	/**
