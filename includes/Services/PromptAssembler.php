@@ -27,9 +27,18 @@ class PromptAssembler {
 		$ctas     = ! empty( $snapshot['ctas_catalog'] ) ? $snapshot['ctas_catalog'] : array();
 		$curated  = ! empty( $business['curated_facts'] ) ? $business['curated_facts'] : '';
 
-		$parts   = array();
-		$parts[] = '=== ROLE & ANSWER POLICY ===';
-		$parts[] = $this->policy_block( $brief );
+		// The static role, answer policy, and OUTPUT SCHEMA now live in the
+		// worker-side prompt (resolved by its prompt id), so they are no longer
+		// sent on every request — only per-site and per-turn dynamic content is.
+		$parts = array();
+
+		// The minimal-tier caution depends on this site's quality tier, so it
+		// stays client-side: the shared worker prompt cannot know the tier.
+		if ( ! empty( $brief['quality_tier'] ) && 'minimal' === $brief['quality_tier'] ) {
+			$parts[] = '=== ANSWER MODE ===';
+			$parts[] = BriefCompiler::minimal_tier_rule();
+		}
+
 		$parts[] = '=== SITE BRIEF (v: ' . ( $brief['brief_version'] ?? 'unknown' ) . ') ===';
 		$parts[] = $brief['text'] ?? '';
 		$parts[] = '=== CURATED FACTS ===';
@@ -44,33 +53,6 @@ class PromptAssembler {
 		$parts[] = $question;
 
 		return implode( "\n\n", array_filter( $parts, 'strlen' ) );
-	}
-
-	/**
-	 * Core answer policy and JSON schema instructions.
-	 *
-	 * @param array<string, mixed> $brief Brief metadata.
-	 * @return string
-	 */
-	private function policy_block( array $brief ) {
-		$lines = array(
-			'You are a friendly site assistant — not a research tool.',
-			'ABSOLUTE RULES',
-			'1. Use ONLY the SITE BRIEF, CURATED FACTS, and RELEVANT PAGES below. Do not invent facts (especially prices, hours, availability, contact details).',
-			'2. If the answer is not in the context, say so honestly and offer to point the visitor to a contact page or human.',
-			'3. Output STRICT minified JSON matching the OUTPUT SCHEMA. No prose outside it.',
-			'4. Suggestions and ctas must come ONLY from the CTAs CATALOG or be reasonable follow-up questions. NEVER invent URLs.',
-			'5. Be concise (answer <= 80 words). Friendly, natural, never pushy — like a helpful employee.',
-			'6. Answer naturally in your own words. NEVER echo framing phrases like "The site context shows", "According to the pages", "The provided information indicates" etc. Just give the answer directly.',
-			'OUTPUT SCHEMA (return EXACTLY this JSON shape):',
-			'{"answer":"<2-4 sentences, plain text>","suggestions":["<follow-up Q1>","<follow-up Q2>"],"ctas":[{"label":"<from catalog>","url":"<from catalog>"}],"sources":[{"title":"<page title>","url":"<page url>"}],"needs_human":false}',
-		);
-
-		if ( ! empty( $brief['quality_tier'] ) && 'minimal' === $brief['quality_tier'] ) {
-			$lines[] = BriefCompiler::minimal_tier_rule();
-		}
-
-		return implode( "\n", $lines );
 	}
 
 	/**

@@ -7,6 +7,8 @@
 
 namespace NewfoldLabs\WP\Module\AIAssistant\Search\BM25;
 
+use NewfoldLabs\WP\Module\AIAssistant\Services\KnowledgeStore;
+
 /**
  * Owns database table names and schema installation.
  */
@@ -101,15 +103,18 @@ class Schema {
 	/**
 	 * Return corpus-wide stats used by BM25 scoring.
 	 *
+	 * @param bool $force_refresh Skip the cached option and recompute from the tables.
 	 * @return array{total_docs:int,avgdl:float}
 	 */
-	public static function get_stats() {
-		$cached = get_option( self::STATS_OPTION, array() );
-		if ( is_array( $cached ) && isset( $cached['total_docs'], $cached['avgdl'] ) ) {
-			return array(
-				'total_docs' => (int) $cached['total_docs'],
-				'avgdl'      => (float) $cached['avgdl'],
-			);
+	public static function get_stats( $force_refresh = false ) {
+		if ( ! $force_refresh ) {
+			$cached = get_option( self::STATS_OPTION, array() );
+			if ( is_array( $cached ) && isset( $cached['total_docs'], $cached['avgdl'] ) ) {
+				return array(
+					'total_docs' => (int) $cached['total_docs'],
+					'avgdl'      => (float) $cached['avgdl'],
+				);
+			}
 		}
 
 		global $wpdb;
@@ -138,19 +143,19 @@ class Schema {
 
 		$terms_table = self::terms_table();
 		$docs_table  = self::docs_table();
-		$stats       = self::get_stats();
-		$progress    = Indexer::get_rebuild_progress();
+		// Diagnostics must reflect the live tables; this also re-syncs the
+		// cached stats option consumed by the search scoring hot path.
+		$stats    = self::get_stats( true );
+		$progress = Indexer::get_rebuild_progress();
 
 		$term_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$terms_table}" );
 		$terms     = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT term) FROM {$terms_table}" );
-		$indexed   = get_option( 'nfd_ai_assistant_search_indexed_at', '' );
-
 		return array(
 			'total_docs'    => $stats['total_docs'],
 			'avgdl'         => $stats['avgdl'],
 			'term_rows'     => $term_rows,
 			'unique_terms'  => $terms,
-			'last_indexed'  => is_string( $indexed ) ? $indexed : '',
+			'last_indexed'  => KnowledgeStore::get_search_index_built_at(),
 			'rebuild'       => $progress,
 			'limited_mode'  => 'running' === $progress['status'],
 			'tables'        => array(

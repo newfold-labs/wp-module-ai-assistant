@@ -71,7 +71,11 @@ class SnapshotBuilder {
 		$type = $this->resolve_type( $mode );
 		$contact = $this->resolve_contact();
 
-		$content_count = (int) wp_count_posts( 'page' )->publish + (int) wp_count_posts( 'post' )->publish;
+		$content_count = 0;
+		foreach ( KnowledgeStore::indexable_post_types() as $post_type ) {
+			$counts = wp_count_posts( $post_type );
+			$content_count += (int) ( $counts->publish ?? 0 );
+		}
 
 		return new BusinessProfile(
 			array(

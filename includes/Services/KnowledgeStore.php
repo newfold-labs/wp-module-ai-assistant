@@ -271,7 +271,41 @@ class KnowledgeStore {
 	 * @return array<int, string>
 	 */
 	public static function indexable_post_types() {
-		$types = array( 'page', 'post' );
+		$types = array( 'page', 'post', 'product' );
 		return apply_filters( 'nfd_ai_assistant_indexable_post_types', $types );
+	}
+
+	/**
+	 * Canonical search-index build timestamp for admin UI.
+	 *
+	 * @return string
+	 */
+	public static function get_search_index_built_at() {
+		$indexed_at = (string) get_option( 'nfd_ai_assistant_search_indexed_at', '' );
+		if ( '' !== $indexed_at ) {
+			return $indexed_at;
+		}
+
+		$snapshot = self::get_snapshot();
+		return ! empty( $snapshot['built_at'] ) ? (string) $snapshot['built_at'] : '';
+	}
+
+	/**
+	 * Persist the search-index build timestamp in both storage locations.
+	 *
+	 * @param string|null $timestamp ISO-8601 timestamp.
+	 * @return string
+	 */
+	public static function mark_search_index_built_at( $timestamp = null ) {
+		$timestamp = $timestamp ?: gmdate( 'c' );
+		update_option( 'nfd_ai_assistant_search_indexed_at', $timestamp, false );
+
+		$snapshot = self::get_snapshot();
+		if ( ! empty( $snapshot ) ) {
+			$snapshot['built_at'] = $timestamp;
+			self::set_snapshot( $snapshot );
+		}
+
+		return $timestamp;
 	}
 }

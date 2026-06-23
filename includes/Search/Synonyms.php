@@ -170,14 +170,15 @@ class Synonyms {
 
 		$parts = array_map( 'strtolower', $parts );
 
-		return array_values(
-			array_filter(
-				array_map( 'sanitize_key', $parts ),
-				function ( $term ) {
-					return strlen( $term ) >= 2 && strlen( $term ) <= 64 && ! ctype_digit( $term );
-				}
-			)
+		$clean = array_filter(
+			array_map( 'sanitize_key', $parts ),
+			function ( $term ) {
+				return strlen( $term ) >= 2 && strlen( $term ) <= 64 && ! ctype_digit( $term );
+			}
 		);
+
+		// Stem to match the index/query tokenizer so synonym lookups align.
+		return array_values( array_map( array( Tokenizer::class, 'stem' ), $clean ) );
 	}
 
 	/**
